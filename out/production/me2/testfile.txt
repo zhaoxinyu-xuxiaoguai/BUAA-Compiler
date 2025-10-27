@@ -1,0 +1,10 @@
+int fun1(int x,int arr[]){
+    return x+arr[0];
+}
+int main(){
+    int i=1;
+    int arr[3]={1,2,3};
+    fun1(i,arr);
+
+    return 0;
+}

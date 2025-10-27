@@ -1,0 +1,173 @@
+package frontend;
+
+import error.Error;
+import error.ErrorHandler;
+import error.ErrorType;
+import token.Token;
+import token.TokenType;
+import utils.IOUtils;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class Lexer {
+    private  static final Lexer instance=new Lexer();
+
+    public static Lexer getInstance(){
+        return instance;
+    }
+
+    private List<Token> tokens=new ArrayList<>();
+
+    public List<Token> getTokens(){
+        return tokens;
+    }
+
+    private Map<String, TokenType> keywords = new HashMap<String,TokenType>(){{
+        put("main", TokenType.MAINTK);
+        put("const", TokenType.CONSTTK);
+        put("int", TokenType.INTTK);
+        put("break", TokenType.BREAKTK);
+        put("continue", TokenType.CONTINUETK);
+        put("if", TokenType.IFTK);
+        put("else", TokenType.ELSETK);
+        put("printf", TokenType.PRINTFTK);
+        put("return", TokenType.RETURNTK);
+        put("for", TokenType.FORTK);
+        put("static", TokenType.STATICTK);
+        put("void", TokenType.VOIDTK);
+    }};
+
+    public void analyze(String content){
+        int lineNumber =1;
+        int contentLength=content.length();
+
+        for (int i = 0; i < contentLength; i++) {
+            char c = content.charAt(i);
+            char next = i + 1 < contentLength ? content.charAt(i + 1) : '\0';
+            if (c == '\n') lineNumber++;
+            else if (c == '_' || Character.isLetter(c)) { // 标识符
+                String s = "";
+                for (int j = i; j < contentLength; j++) {
+                    char d = content.charAt(j);
+                    if (d == '_' || Character.isLetter(d) || Character.isDigit(d)) s += d;
+                    else {
+                        i = j - 1;
+                        break;
+                    }
+                }
+                tokens.add(new Token(keywords.getOrDefault(s, TokenType.IDENFR), lineNumber, s));
+            } else if (Character.isDigit(c)) { // 数字
+                String s = "";
+                for (int j = i; j < contentLength; j++) {
+                    char d = content.charAt(j);
+                    if (Character.isDigit(d)) s += d;
+                    else {
+                        i = j - 1;
+                        break;
+                    }
+                }
+                tokens.add(new Token(TokenType.INTCON, lineNumber, s));
+            } else if (c == '\"') { // 字符串
+                String s = "\"";
+                for (int j = i + 1; j < contentLength; j++) {
+                    char d = content.charAt(j);
+                    if (d != '\"') {
+                        s += d;
+                    } else {
+                        i = j;
+                        s += "\"";
+                        break;
+                    }
+                }
+                tokens.add(new Token(TokenType.STRCON, lineNumber, s));
+            } else if (c == '!') { // ! 或 !=
+                if (next != '=') tokens.add(new Token(TokenType.NOT, lineNumber, "!"));
+                else {
+                    tokens.add(new Token(TokenType.NEQ, lineNumber, "!="));
+                    i++;
+                }
+            } else if (c == '&') { // &&
+                if (next == '&') {
+                    tokens.add(new Token(TokenType.AND, lineNumber, "&&"));
+                    i++;
+                }else{
+                    tokens.add(new Token(TokenType.AND, lineNumber, "&&"));
+                    ErrorHandler.getInstance().addError(new Error(lineNumber,ErrorType.a));
+                }
+            } else if (c == '|') { // ||
+                if (next == '|') {
+                    tokens.add(new Token(TokenType.OR, lineNumber, "||"));
+                    i++;
+                }else{
+                    tokens.add(new Token(TokenType.OR, lineNumber, "||"));
+                    ErrorHandler.getInstance().addError(new Error(lineNumber,ErrorType.a));
+                }
+            } else if (c == '+') { // +
+                tokens.add(new Token(TokenType.PLUS, lineNumber, "+"));
+            } else if (c == '-') { // -
+                tokens.add(new Token(TokenType.MINU, lineNumber, "-"));
+            } else if (c == '*') { // *
+                tokens.add(new Token(TokenType.MULT, lineNumber, "*"));
+            } else if (c == '/') { // / 或 // 或 /*
+                if (next == '/') { // //
+                    int j = content.indexOf('\n', i + 2);
+                    if (j == -1) j = contentLength;
+                    i = j - 1;
+                } else if (next == '*') { // /* */
+                    for (int j = i + 2; j < contentLength; j++) {
+                        char e = content.charAt(j);
+                        if (e == '\n') lineNumber++;
+                        else if (e == '*' && content.charAt(j + 1) == '/') {
+                            i = j + 1;
+                            break;
+                        }
+                    }
+                } else tokens.add(new Token(TokenType.DIV, lineNumber, "/"));
+            } else if (c == '%') { // %
+                tokens.add(new Token(TokenType.MOD, lineNumber, "%"));
+            } else if (c == '<') { // < 或 <=
+                if (next != '=') { // <
+                    tokens.add(new Token(TokenType.LSS, lineNumber, "<"));
+                } else {
+                    tokens.add(new Token(TokenType.LEQ, lineNumber, "<="));
+                    i++;
+                }
+            } else if (c == '>') { // > 或 >=
+                if (next != '=') { // >
+                    tokens.add(new Token(TokenType.GRE, lineNumber, ">"));
+                } else {
+                    tokens.add(new Token(TokenType.GEQ, lineNumber, ">="));
+                    i++;
+                }
+            } else if (c == '=') { // = 或 ==
+                if (next != '=') tokens.add(new Token(TokenType.ASSIGN, lineNumber, "="));
+                else {
+                    tokens.add(new Token(TokenType.EQL, lineNumber, "=="));
+                    i++;
+                }
+            } else if (c == ';') tokens.add(new Token(TokenType.SEMICN, lineNumber, ";"));
+            else if (c == ',') tokens.add(new Token(TokenType.COMMA, lineNumber, ","));
+            else if (c == '(') tokens.add(new Token(TokenType.LPARENT, lineNumber, "("));
+            else if (c == ')') tokens.add(new Token(TokenType.RPARENT, lineNumber, ")"));
+            else if (c == '[') tokens.add(new Token(TokenType.LBRACK, lineNumber, "["));
+            else if (c == ']') tokens.add(new Token(TokenType.RBRACK, lineNumber, "]"));
+            else if (c == '{') tokens.add(new Token(TokenType.LBRACE, lineNumber, "{"));
+            else if (c == '}') tokens.add(new Token(TokenType.RBRACE, lineNumber, "}"));
+        }
+    }
+
+    public void printLexAns() throws IOException {
+        for (Token token : tokens) {
+            IOUtils.write(token.toString());
+        }
+    }
+
+//    public ArrayList<Error> getErrors(){
+//        return errors;
+//    }
+}
+

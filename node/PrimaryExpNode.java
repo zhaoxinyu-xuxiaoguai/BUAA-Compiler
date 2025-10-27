@@ -1,0 +1,74 @@
+package node;
+
+import frontend.Parser;
+import token.Token;
+import utils.IOUtils;
+
+import java.io.IOException;
+
+public class PrimaryExpNode {
+    // PrimaryExp -> '(' Exp ')' | LVal | Number
+
+    private Token leftParentToken = null;
+    private ExpNode expNode = null;
+    private Token rightParentToken = null;
+    private LValNode lValNode = null;
+    private NumberNode numberNode = null;
+
+    public PrimaryExpNode(Token leftParentToken, ExpNode expNode, Token rightParentToken) {
+        this.leftParentToken = leftParentToken;
+        this.expNode = expNode;
+        this.rightParentToken = rightParentToken;
+    }
+
+    public PrimaryExpNode(LValNode lValNode) {
+        this.lValNode = lValNode;
+    }
+
+    public PrimaryExpNode(NumberNode numberNode) {
+        this.numberNode = numberNode;
+    }
+
+    public Token getLeftParentToken() {
+        return leftParentToken;
+    }
+
+    public ExpNode getExpNode() {
+        return expNode;
+    }
+
+    public Token getRightParentToken() {
+        return rightParentToken;
+    }
+
+    public LValNode getLValNode() {
+        return lValNode;
+    }
+
+    public NumberNode getNumberNode() {
+        return numberNode;
+    }
+
+    public void print() throws IOException {
+        if (expNode != null) {
+            IOUtils.write(leftParentToken.toString());
+            expNode.print();
+            IOUtils.write(rightParentToken.toString());
+        } else if (lValNode != null) {
+            lValNode.print();
+        } else {
+            numberNode.print();
+        }
+        IOUtils.write(Parser.nodeType.get(NodeType.PrimaryExp));
+    }
+
+    public String getStr() {
+        if (expNode != null) {
+            return "(" + expNode.getStr() + ")";
+        } else if (lValNode != null) {
+            return lValNode.getStr();
+        } else {
+            return numberNode.getStr();
+        }
+    }
+}
