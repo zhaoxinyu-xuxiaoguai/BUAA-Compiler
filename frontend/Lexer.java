@@ -49,6 +49,8 @@ public class Lexer {
             char c = content.charAt(i);
             char next = i + 1 < contentLength ? content.charAt(i + 1) : '\0';
             if (c == '\n') lineNumber++;
+
+
             else if (c == '_' || Character.isLetter(c)) { // 标识符
                 String s = "";
                 for (int j = i; j < contentLength; j++) {

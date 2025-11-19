@@ -1,5 +1,0 @@
-1 fun1 IntFunc
-2 x Int
-2 arr IntArray
-3 i Int
-3 arr IntArray

@@ -42,6 +42,14 @@ public class IOUtils {
         write(content, Config.fileOutPath);
     }
 
+    public static void llvm_ir_raw(String content) throws IOException {
+        write(content, Config.fileLlvmIRRawPath);
+    }
+
+    public static void llvm_ir(String message) throws IOException {
+        write(message, Config.fileLlvmIRPath);
+    }
+
     public static void error(String msg) throws IOException {
         write(msg,Config.fileErrorPath);
     }
@@ -56,6 +64,11 @@ public class IOUtils {
             file.delete();
         }
     }
+
+    public static void mips(String message) throws IOException {
+        write(message, Config.fileMipsPath);
+    }
+
     public static void clear(String filename) throws IOException {
         delete(filename);
         write("",filename);

@@ -1,7 +1,11 @@
+import backend.MipsGenModule;
 import config.Config;
 import error.ErrorHandler;
 import frontend.Lexer;
 import frontend.Parser;
+import ir.IRModule;
+import ir.LLVMGenerator;
+import pass.PassModule;
 import utils.IOUtils;
 
 import java.io.IOException;
@@ -34,5 +38,19 @@ public class Compiler {
         if(Config.error){
             ErrorHandler.getInstance().printErrors();
         }
+
+        //中间代码生成
+
+        if (Config.ir) {
+            LLVMGenerator.getInstance().visitCompUnit(Parser.getInstance().getCompUnitNode());
+            IOUtils.llvm_ir_raw(IRModule.getInstance().toString());
+            PassModule.getInstance().runIRPasses();
+            IOUtils.llvm_ir(IRModule.getInstance().toString());
+        }
+        if (Config.mips) {
+            MipsGenModule.getInstance().loadIR();
+            MipsGenModule.getInstance().genMips();
+        }
+
     }
 }
