@@ -38,7 +38,10 @@ public class FunctionType implements Type {
     public void setReturnType(Type returnType) {
         this.returnType = returnType;
     }
-
+    /*
+     - void foo(int arr[]) 实际上等价于 void foo(int* arr)
+     - 数组参数在传递时会丢失长度信息，变成指向首元素的指针
+     */
     private void arrayTypeNoLength() {
         List<Integer> target = new ArrayList<>();
         for (Type type : parametersType) {

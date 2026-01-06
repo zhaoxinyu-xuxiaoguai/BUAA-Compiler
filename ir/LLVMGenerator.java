@@ -212,6 +212,7 @@ public class LLVMGenerator {
         if (constDefNode.getConstExpNodes().isEmpty()) {
             // is not an array
             visitConstInitVal(constDefNode.getConstInitValNode());
+            //saveValue：之前通过 visitConstInitVal 计算出的常量值（整数）
             tmpValue = buildFactory.getConstInt(saveValue == null ? 0 : saveValue);
             addConst(name, saveValue);
             if (isGlobal) {
@@ -222,21 +223,49 @@ public class LLVMGenerator {
                 addSymbol(name, tmpValue);
             }
         } else {
+            // beauty里考虑了多维数组的情况
             // is an array
-            List<Integer> dims = new ArrayList<>();
-            for (ConstExpNode constExpNode : constDefNode.getConstExpNodes()) {
-                visitConstExp(constExpNode);
-                dims.add(saveValue);
-            }
-            tmpDims = new ArrayList<>(dims);
-            Type type = null;
-            for (int i = dims.size() - 1; i >= 0; i--) {
-                if (type == null) {
-                    type = buildFactory.getArrayType(tmpType, dims.get(i));
-                } else {
-                    type = buildFactory.getArrayType(type, dims.get(i));
-                }
-            }
+            // List<Integer> dims = new ArrayList<>();
+            // for (ConstExpNode constExpNode : constDefNode.getConstExpNodes()) {
+            //     visitConstExp(constExpNode);
+            //     dims.add(saveValue);
+            // }
+            // tmpDims = new ArrayList<>(dims);
+            // Type type = null;
+            // for (int i = dims.size() - 1; i >= 0; i--) {
+            //     if (type == null) {
+            //         type = buildFactory.getArrayType(tmpType, dims.get(i));
+            //     } else {
+            //         type = buildFactory.getArrayType(type, dims.get(i));
+            //     }
+            // }
+            // if (isGlobal) {
+            //     tmpValue = buildFactory.buildGlobalArray(name, type, true);
+            //     ((ConstArray) ((GlobalVar) tmpValue).getValue()).setInit(true);
+            // } else {
+            //     tmpValue = buildFactory.buildArray(curBlock, true, type);
+            // }
+            // addSymbol(name, tmpValue);
+            // curArray = tmpValue;
+            // isArray = true;
+            // tmpName = name;
+            // tmpDepth = 0;
+            // tmpOffset = 0;
+            // visitConstInitVal(constDefNode.getConstInitValNode());
+            // isArray = false;
+            // is an array (1D only)
+            // 计算数组大小
+         
+            visitConstExp(constDefNode.getConstExpNodes().get(0));
+            int arraySize = saveValue;//递归得到数组大小
+    
+
+            // 构建一维数组类型
+            Type type = buildFactory.getArrayType(tmpType, arraySize);
+            tmpDims = new ArrayList<>();
+            tmpDims.add(arraySize);
+
+            // 创建数组变量
             if (isGlobal) {
                 tmpValue = buildFactory.buildGlobalArray(name, type, true);
                 ((ConstArray) ((GlobalVar) tmpValue).getValue()).setInit(true);
@@ -244,6 +273,8 @@ public class LLVMGenerator {
                 tmpValue = buildFactory.buildArray(curBlock, true, type);
             }
             addSymbol(name, tmpValue);
+
+            // 设置初始化上下文
             curArray = tmpValue;
             isArray = true;
             tmpName = name;
@@ -254,57 +285,45 @@ public class LLVMGenerator {
         }
     }
 
-    private void visitConstInitVal(ConstInitValNode constInitValNode) {
-        // ConstInitVal -> ConstExp | '{' [ ConstExp { ',' ConstExp } ] '}'
-        // Note: This grammar doesn't support nested ConstInitVal, only a list of ConstExp
-        if (constInitValNode.getConstExpNode() != null && !isArray) {
-            // Single ConstExp (not in array context)
-            if (!constInitValNode.getConstExpNode().isEmpty()) {
-                visitConstExp(constInitValNode.getConstExpNode().get(0));
-            }
-        } else if (isArray) {
-            // Array initialization: '{' [ ConstExp { ',' ConstExp } ] '}'
-            if (constInitValNode.getLeftBraceToken() == null) {
-                // Single element without braces
-                visitConstExp(constInitValNode.getConstExpNode().get(0));
-                tmpDepth = 1;
-                tmpValue = buildFactory.getConstInt(saveValue);
-                if (isGlobal) {
-                    buildFactory.buildInitArray(curArray, tmpOffset, tmpValue);
-                } else {
-                    buildFactory.buildStore(curBlock, buildFactory.buildGEP(curBlock, curArray, tmpOffset), tmpValue);
-                }
-                StringBuilder name = new StringBuilder(tmpName);
-                List<Value> args = ((ArrayType) ((PointerType) curArray.getType()).getTargetType()).offset2Index(tmpOffset);
-                for (Value v : args) {
-                    name.append(((ConstInt) v).getValue()).append(";");
-                }
-                addConst(name.toString(), saveValue);
-                tmpOffset++;
-            } else {
-                // List of elements with braces
-                int offset = tmpOffset;
-                for (ConstExpNode constExpNode : constInitValNode.getConstExpNode()) {
-                    tmpValue = null;
-                    visitConstExp(constExpNode);
-                    tmpValue = buildFactory.getConstInt(saveValue);
-                    if (isGlobal) {
-                        buildFactory.buildInitArray(curArray, tmpOffset, tmpValue);
-                    } else {
-                        buildFactory.buildStore(curBlock, buildFactory.buildGEP(curBlock, curArray, tmpOffset), tmpValue);
-                    }
-                    StringBuilder name = new StringBuilder(tmpName);
-                    List<Value> args = ((ArrayType) ((PointerType) curArray.getType()).getTargetType()).offset2Index(tmpOffset);
-                    for (Value v : args) {
-                        name.append(((ConstInt) v).getValue()).append(";");
-                    }
-                    addConst(name.toString(), saveValue);
-                    tmpOffset++;
-                }
-                tmpDepth = 1;
-            }
-        }
-    }
+ private void visitConstInitVal(ConstInitValNode constInitValNode) {
+      // ConstInitVal -> ConstExp | '{' [ ConstExp { ',' ConstExp } ] '}'
+
+      // 简单常量初始化（非数组）
+      if (!isArray) {
+          if (constInitValNode.getConstExpNode() != null
+              && !constInitValNode.getConstExpNode().isEmpty()) {
+              visitConstExp(constInitValNode.getConstExpNode().get(0));
+          }
+          return;
+      }
+
+      // 一维数组初始化
+      if (constInitValNode.getConstExpNode() == null
+          || constInitValNode.getConstExpNode().isEmpty()) {
+          return;  // 无初始值
+      }
+
+      // 统一处理所有元素（有无花括号都一样）
+      for (ConstExpNode constExpNode : constInitValNode.getConstExpNode()) {
+          // 1. 计算常量值
+          visitConstExp(constExpNode);
+          tmpValue = buildFactory.getConstInt(saveValue);
+
+          // 2. 存储到数组
+          if (isGlobal) {
+              buildFactory.buildInitArray(curArray, tmpOffset, tmpValue);
+          } else {
+              buildFactory.buildStore(curBlock,
+                  buildFactory.buildGEP(curBlock, curArray, tmpOffset), tmpValue);
+          }
+
+          // 3. 更新常量表（简化版）
+          addConst(tmpName + tmpOffset + ";", saveValue);
+
+          // 4. 移动到下一个位置
+          tmpOffset++;
+      }
+  }
 
     private void visitVarDecl(VarDeclNode varDeclNode) {
         // VarDecl -> [ 'static' ] BType VarDef { ',' VarDef } ';'
@@ -348,6 +367,7 @@ public class LLVMGenerator {
             if (varDefNode.getInitValNode() != null) {
                 tmpValue = null;
                 if (isGlobal || isStatic) {
+                    //开启常量折叠
                     isConst = true;
                     saveValue = null;
                 }
@@ -547,23 +567,28 @@ public class LLVMGenerator {
                     visitExp(stmtNode.getExpNode());
                     tmpValue = buildFactory.buildStore(curBlock, input, tmpValue);
                 } else {
-                    // is an array
-                    List<Value> indexList = new ArrayList<>();
-                    for (ExpNode expNode : stmtNode.getLValNode().getExpNodes()) {
-                        visitExp(expNode);
-                        indexList.add(tmpValue);
-                    }
+                    // is an array (一维数组)
+                    // 计算数组下标
+                    visitExp(stmtNode.getLValNode().getExpNodes().get(0));
+                    Value index = tmpValue;
+
+                    // 获取数组地址
                     tmpValue = getValue(stmtNode.getLValNode().getIdent().getContent());
                     Value addr;
-                    Type type = tmpValue.getType(), targetType = ((PointerType) type).getTargetType();
+                    Type targetType = ((PointerType) tmpValue.getType()).getTargetType();
+
                     if (targetType instanceof PointerType) {
-                        // arr[][3]
+                        // 函数形参数组: int arr[]
+                        // 类型: i32** -> 需要先 load 出 i32*
                         tmpValue = buildFactory.buildLoad(curBlock, tmpValue);
+                        addr = buildFactory.buildGEP(curBlock, tmpValue, Arrays.asList(index));
                     } else {
-                        // arr[3][2]
-                        indexList.add(0, ConstInt.ZERO);
+                        // 局部/全局数组: int arr[10]
+                        // 类型: [10 x i32]* -> 需要添加首索引 0
+                        addr = buildFactory.buildGEP(curBlock, tmpValue, Arrays.asList(ConstInt.ZERO, index));
                     }
-                    addr = buildFactory.buildGEP(curBlock, tmpValue, indexList);
+
+                    // 计算右侧表达式并存储
                     visitExp(stmtNode.getExpNode());
                     tmpValue = buildFactory.buildStore(curBlock, addr, tmpValue);
                 }
@@ -782,56 +807,53 @@ public class LLVMGenerator {
     private void visitLVal(LValNode lValNode) {
         // LVal -> Ident {'[' Exp ']'}
         if (isConst) {
+            // 常量上下文：获取常量值
             StringBuilder name = new StringBuilder(lValNode.getIdent().getContent());
             if (!lValNode.getExpNodes().isEmpty()) {
+                // 常量数组元素：arr[index]
                 name.append("0;");
-                for (ExpNode expNode : lValNode.getExpNodes()) {
-                    visitExp(expNode);
-                    name.append(buildFactory.getConstInt(saveValue == null ? 0 : saveValue).getValue()).append(";");
-                }
+                visitExp(lValNode.getExpNodes().get(0));
+                name.append(buildFactory.getConstInt(saveValue == null ? 0 : saveValue).getValue()).append(";");
             }
             saveValue = getConst(name.toString());
         } else {
+            // 运行时上下文
             if (lValNode.getExpNodes().isEmpty()) {
-                // is not an array
+                // 无下标：普通变量或数组名
                 Value addr = getValue(lValNode.getIdent().getContent());
-                tmpValue = addr;
-                Type type = addr.getType();
+                Type targetType = ((PointerType) addr.getType()).getTargetType();
 
-                if (!(((PointerType) type).getTargetType() instanceof ArrayType)) {
-                    tmpValue = buildFactory.buildLoad(curBlock, tmpValue);
+                if (targetType instanceof ArrayType) {
+                    // 数组名：返回首元素地址（用于函数参数传递等）
+                    tmpValue = buildFactory.buildGEP(curBlock, addr, Arrays.asList(ConstInt.ZERO, ConstInt.ZERO));
                 } else {
-                    List<Value> indexList = new ArrayList<>();
-                    indexList.add(ConstInt.ZERO);
-                    indexList.add(ConstInt.ZERO);
-                    tmpValue = buildFactory.buildGEP(curBlock, tmpValue, indexList);
-                }
-            } else {
-                // is an array, maybe arr[1][2] or arr[][2]
-                List<Value> indexList = new ArrayList<>();
-                for (ExpNode expNode : lValNode.getExpNodes()) {
-                    visitExp(expNode);
-                    indexList.add(tmpValue);
-                }
-                tmpValue = getValue(lValNode.getIdent().getContent());
-                Value addr;
-                Type type = tmpValue.getType(), targetType = ((PointerType) type).getTargetType();
-                if (targetType instanceof PointerType) {
-                    // arr[][3]
-                    tmpValue = buildFactory.buildLoad(curBlock, tmpValue);
-                } else {
-                    // arr[1][2]
-                    indexList.add(0, ConstInt.ZERO);
-                }
-                addr = buildFactory.buildGEP(curBlock, tmpValue, indexList);
-                if (((PointerType) addr.getType()).getTargetType() instanceof ArrayType) {
-                    List<Value> indexList2 = new ArrayList<>();
-                    indexList2.add(ConstInt.ZERO);
-                    indexList2.add(ConstInt.ZERO);
-                    tmpValue = buildFactory.buildGEP(curBlock, addr, indexList2);
-                } else {
+                    // 普通变量：load 值
                     tmpValue = buildFactory.buildLoad(curBlock, addr);
                 }
+            } else {
+                // 有下标：一维数组元素访问 arr[index]
+                // 计算下标
+                visitExp(lValNode.getExpNodes().get(0));
+                Value index = tmpValue;
+
+                // 获取数组地址
+                tmpValue = getValue(lValNode.getIdent().getContent());
+                Type targetType = ((PointerType) tmpValue.getType()).getTargetType();
+                Value addr;
+
+                if (targetType instanceof PointerType) {
+                    // 函数形参数组: int arr[]
+                    // 类型: i32** -> 需要先 load 出 i32*
+                    tmpValue = buildFactory.buildLoad(curBlock, tmpValue);
+                    addr = buildFactory.buildGEP(curBlock, tmpValue, Arrays.asList(index));
+                } else {
+                    // 局部/全局数组: int arr[10]
+                    // 类型: [10 x i32]* -> 需要添加首索引 0
+                    addr = buildFactory.buildGEP(curBlock, tmpValue, Arrays.asList(ConstInt.ZERO, index));
+                }
+
+                // load 数组元素的值
+                tmpValue = buildFactory.buildLoad(curBlock, addr);
             }
         }
     }
@@ -1123,28 +1145,33 @@ public class LLVMGenerator {
             ExpNode expNode = forStmtNode.getExpNode().get(i);
 
             if (lValNode.getExpNodes().isEmpty()) {
-                // is not an array
+                // 普通变量赋值
                 Value input = getValue(lValNode.getIdent().getContent());
                 visitExp(expNode);
                 tmpValue = buildFactory.buildStore(curBlock, input, tmpValue);
             } else {
-                // is an array
-                List<Value> indexList = new ArrayList<>();
-                for (ExpNode indexExp : lValNode.getExpNodes()) {
-                    visitExp(indexExp);
-                    indexList.add(tmpValue);
-                }
+                // 一维数组元素赋值
+                // 计算数组下标
+                visitExp(lValNode.getExpNodes().get(0));
+                Value index = tmpValue;
+
+                // 获取数组地址inde
                 tmpValue = getValue(lValNode.getIdent().getContent());
+                Type targetType = ((PointerType) tmpValue.getType()).getTargetType();
                 Value addr;
-                Type type = tmpValue.getType(), targetType = ((PointerType) type).getTargetType();
+
                 if (targetType instanceof PointerType) {
-                    // arr[][3]
+                    // 函数形参数组: int arr[]
+                    // 类型: i32** -> 需要先 load 出 i32*
                     tmpValue = buildFactory.buildLoad(curBlock, tmpValue);
+                    addr = buildFactory.buildGEP(curBlock, tmpValue, Arrays.asList(index));
                 } else {
-                    // arr[3][2]
-                    indexList.add(0, ConstInt.ZERO);
+                    // 局部/全局数组: int arr[10]
+                    // 类型: [10 x i32]* -> 需要添加首索引 0
+                    addr = buildFactory.buildGEP(curBlock, tmpValue, Arrays.asList(ConstInt.ZERO, index));
                 }
-                addr = buildFactory.buildGEP(curBlock, tmpValue, indexList);
+
+                // 计算右侧表达式并存储
                 visitExp(expNode);
                 tmpValue = buildFactory.buildStore(curBlock, addr, tmpValue);
             }
